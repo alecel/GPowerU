@@ -8,9 +8,10 @@
 #include <signal.h>     
 #include <getopt.h>
 
-#define USAGE                                                                                          \
-    "Usage: %s --output-dir <DIR_NAME> \n\n"                                                           \
-    "\t-o, --output-dir <DIR>              Write power profile data files to <DIR_NAME>.\n\n"
+#define USAGE                                                                                                   \
+    "Usage: %s --output-dir <DIR_NAME> \n\n"                                                                    \
+    "\t-o, --output-dir <DIR>              Write power profile data files to <DIR_NAME>."                       \
+    "\t                                    If <DIR_NAME> does not exist the program creates it.\n "  
 
 
 
@@ -18,7 +19,7 @@ static void sigHandler(int signum){
     if (signum == SIGINT){
         fprintf( stderr, "SIGINT catched!\n" );
         fprintf( stderr, "Ready to exit!\n");
-        if ( GPowerU_end(5) != 0 ){
+        if ( GPowerU_end(3) != 0 ){
             fprintf ( stderr, " error: terminating...\n" );
             _exit (1);
         }

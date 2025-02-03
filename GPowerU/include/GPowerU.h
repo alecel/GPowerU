@@ -30,8 +30,6 @@ using namespace std;
 #define MAX_CHECKPOINTS 64
 #define MAX_DEVICES 16
 
-#define ROOT_ENABLED 0
-#define MULTIGPU_DISABLED 0
 #define TIME_STEP 0.00001  //Interval for sampling (in s)
 #define POWER_THRESHOLD 0 
 
@@ -59,11 +57,9 @@ nvmlReturn_t nvResult;
 
 //Time sampling arrays for the power monitoring curve (thread_times) and kernel checkpoints (device_times)
 double thread_times[MAX_DEVICES][SAMPLE_MAX_SIZE_DEFAULT];
-double device_times[SAMPLE_MAX_SIZE_DEFAULT];
 
 //Power sampling arrays for the power monitoring curve (powers) and kernel checkpoints (powerz)
 double thread_powers[MAX_DEVICES][SAMPLE_MAX_SIZE_DEFAULT];
-double device_powers[SAMPLE_MAX_SIZE_DEFAULT];
 
 
 int n_values; //Total number of data taken
