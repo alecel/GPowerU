@@ -1,4 +1,4 @@
-# GPowerU Tool (APE Lab, INFN Roma1)
+# gPower (Istituto per le Applicazioni del Calcolo "Mauro Picone")
 __________________________________
 
 GPowerU is a simple tool able to measure the power consumption of a CUDA kernel in specific points of the device code and to generate the complete power profile. 
