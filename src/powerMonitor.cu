@@ -1,8 +1,10 @@
+// 2025 Istituto per le Applicazioni del Calcolo "Mauro Picone"
+// alessandro.celestini@cnr.it
+
 #include <iostream>
 #include <math.h>
 #include "nvml.h"
-#include "helper_cuda.h"
-#include "GPowerU.hpp"
+#include "gPower.h"
 #include <unistd.h>
 #include <stdio.h>
 #include <signal.h>     
@@ -10,7 +12,7 @@
 
 #define USAGE                                                                                                   \
     "Usage: %s --output-dir <DIR_NAME> \n\n"                                                                    \
-    "\t-o, --output-dir <DIR>              Write power profile data files to <DIR_NAME>."                       \
+    "\t-o, --output-dir <DIR>              Write power profile data files to <DIR_NAME>.\n"                     \
     "\t                                    If <DIR_NAME> does not exist the program creates it.\n "  
 
 
@@ -19,7 +21,7 @@ static void sigHandler(int signum){
     if (signum == SIGINT){
         fprintf( stderr, "SIGINT catched!\n" );
         fprintf( stderr, "Ready to exit!\n");
-        if ( GPowerU_end(3) != 0 ){
+        if ( GPowerU_end() != 0 ){
             fprintf ( stderr, " error: terminating...\n" );
             _exit (1);
         }
@@ -57,10 +59,12 @@ int main( int argc, char** argv){
 
   memset(node_name, 0, 256);
   gethostname(node_name, 256);
-  
-  printf("out_dir: %s --- node_name: %s \n", out_dir, node_name);
+ 
+  printf("### START Configuration\n"); 
+  printf("\toutput directory: %s \n", out_dir);
+  printf("\tnode name: %s \n", node_name);
+  printf("### END Configuration\n"); 
 
-  //Initializations ==> enable the NVML library, starts CPU thread for the power monitoring,  
   if ( GPowerU_init(out_dir, node_name) != 0 ) {
     fprintf ( stderr, "%s: error: initializing...\n", argv[0] );
     _exit (1);

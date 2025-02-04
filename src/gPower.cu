@@ -1,33 +1,61 @@
-// 2023 INFN APE Lab - Sezione di Roma
-// cristian.rossi@roma1.infn.it
-// 2024 Istituto per le Applicazioni del Calcolo "Mauro Picone"
+// 2025 Istituto per le Applicazioni del Calcolo "Mauro Picone"
 // alessandro.celestini@cnr.it
 
-#include "GPowerU.h"
+#include "gPower.h"
+
+using namespace std;
+
+// Max number of samples per device
+#define SAMPLE_MAX_SIZE_DEFAULT 2000000
+// Max number of sampled devices
+#define MAX_DEVICES 8
+// Sampling frequency in seconds
+#define TIME_STEP 0.00001
+
+// Flag variable used to end the sampling thread
+int terminate_thread = 0;
+// NVML handlers
+nvmlDevice_t nvDevice[MAX_DEVICES];
+// Arrays of sampling timestamp in us 
+double thread_times[MAX_DEVICES][SAMPLE_MAX_SIZE_DEFAULT];
+// Arrays of power sampling in milliwatts
+double thread_powers[MAX_DEVICES][SAMPLE_MAX_SIZE_DEFAULT];
+// Total number of samples
+int n_values;
+
+// Sampling thread handler
+pthread_t thread_sampler;
+// Number of devices to monitor
+unsigned int device_count;
+// Output directory
+string glb_out_dir;
+// Hostname of the computing node
+string glb_node_name;
+// File with the starting sample timestamp of each device 
+string glb_file_starttime;
 
 
-//CPU thread managing the parallel power data taking during the kernel execution
+
 void *threadWork(void * arg) {
     unsigned int power[MAX_DEVICES];
     int i=0;
     bool not_enough=0;
-    struct timeval tv_start, tv_aux;
-    struct timeval *time = (struct timeval *) arg;
-		
-    tv_start=*time;
-    printf("************STARTING THREAD**************\n");
+    struct timeval tv_aux;
+    struct timeval tv_start = *((struct timeval *) arg);
+    nvmlReturn_t nvResult;
+
+    printf("*** Start Sampling Thread ***\n");
 
     while (!terminate_thread) {
-	//GET POWER SAMPLES
 	for(int d=0; d < device_count; d++){		       
             nvResult = nvmlDeviceGetPowerUsage(nvDevice[d], &power[d]);
 	    if (NVML_SUCCESS != nvResult) {
-		//printf("Failed to get power usage: %s [device %d]\n", nvmlErrorString(nvResult), d);
+		printf("Failed to get power usage: %s [device %d]\n", nvmlErrorString(nvResult), d);
 		if (nvResult == NVML_ERROR_UNINITIALIZED){
-		    //printf("NVML_ERROR_UNINITIALIZED: the library has not been successfully initialized\n");
+		    printf("NVML_ERROR_UNINITIALIZED: the library has not been successfully initialized\n");
 		    pthread_exit(NULL);
 		}
-		/*if (nvResult == NVML_ERROR_INVALID_ARGUMENT){
+		if (nvResult == NVML_ERROR_INVALID_ARGUMENT){
 		    printf("NVML_ERROR_INVALID_ARGUMENT: device is invalid or power is NULL\n");
 		}
 		if (nvResult == NVML_ERROR_NOT_SUPPORTED){
@@ -38,20 +66,21 @@ void *threadWork(void * arg) {
 		}
 		if (nvResult == NVML_ERROR_UNKNOWN){
 		    printf("NVML_ERROR_UNKNOWN on any unexpected error\n");
-		}*/
+		}
 		if ( i>0 ) {
+		  // If a critical error DOES NOT occure we keep the last measure	
 		  power[d] = thread_powers[d][i-1];
 		}else{
 		  power[d] = 0;
 		}
 	    }			
-	    if(i < SAMPLE_MAX_SIZE_DEFAULT && (power[d] > POWER_THRESHOLD*1000.0  || thread_powers[d][0] > POWER_THRESHOLD*1000.0)) {
+	    if(i < SAMPLE_MAX_SIZE_DEFAULT ) {
 		gettimeofday(&tv_aux,NULL);
             	thread_powers[d][i] = power[d];			
 		thread_times[d][i] = (tv_aux.tv_sec-tv_start.tv_sec)*1000000;
             	thread_times[d][i] += (tv_aux.tv_usec-tv_start.tv_usec);
 		if(i==0) { 
-		    printf("******STARTING GPU WORK******\n");
+		    printf("*** Start Power Sampling (device %d) ***\n",d);
 		}
 		if(i==0) { 
 	            FILE *fp_starttime;
@@ -70,69 +99,53 @@ void *threadWork(void * arg) {
 		    not_enough=1;
 		}
 	     }	
-	}
+	}//endfor 
 	i++;
 	n_values = i;
 	sleep(TIME_STEP);
-    }	
-    printf("************STOP THREAD**************\n");
+    }//endwhile	
+    printf("*** Stop Sampling Thread ***\n");
     pthread_exit(NULL);
 }
 
 
-//Generate the output samples files
 float DataOutput() {
-   int values_threshold=0;
-   float acc0 = 0.0;
    float p_average;
    double interval;
-   double interval_GPU;
-   int begin_gpu=-1, end_gpu=n_values-1;
-   power_peak=0;
+   double tot_power;
+   float power_peak=0;
    FILE  *fp2;
 	
    for(int d=0; d < device_count; d++){
 	string s = glb_out_dir+"/nvmlPowerProfile_"+std::to_string(d)+"_"+glb_node_name+".csv";
-	//std::string s = "data/nvml_power_profile";
-	//s = s + std::to_string(d);
-	//s = s + ".csv";
 	fp2 = fopen(s.c_str(), "w+");
-	fprintf(fp2,"Timestamp [us];Power measure [W]");
+	fprintf(fp2,"Timestamp [s];Power measure [W]");
 
 	for(int i=0; i<n_values; i++) {
             fprintf(fp2, "\n%.6f;%.4f", (thread_times[d][i]-thread_times[d][0])/1000000, thread_powers[d][i]/1000.0);	
-            if (thread_powers[d][i] > power_peak) 
-        		power_peak = thread_powers[d][i];
-            if ( thread_powers[d][i]/1000.0 > 35 && begin_gpu == -1 ) begin_gpu = i;
-            if ( thread_powers[d][i]/1000.0 < 35 && begin_gpu != -1 ) end_gpu = i;
-
-            if (thread_powers[d][i]/1000.0 >= threshold) {
-        	acc0 = acc0 + thread_powers[d][i];
-         	values_threshold++;
-            }
+            if (thread_powers[d][i] > power_peak){ 
+        	power_peak = thread_powers[d][i];
+	    }
+	    tot_power += thread_powers[d][i];
 	}
 	fclose(fp2);
    }
-   if (values_threshold>0) {
-      p_average = acc0 / (values_threshold*1.0);
-   }
-   else {
-      printf("ERROR: DIVISION BY 0\n");
-      exit(-1);
-   }
-    
+
+   p_average = tot_power/(device_count*n_values);    
    interval = thread_times[0][n_values-1] - thread_times[0][0];
-   interval_GPU = thread_times[0][end_gpu] - thread_times[0][begin_gpu];
-   printf("\tAt current frequency (%d,%d) MHz:  Average Power: %.2f W;  Max Power: %.2f W;  Sampling Duration: %.2f ms;  GPU active duration: %.2f ms \n", mem_clock, core_clock, p_average/1000.0, power_peak/1000.0, (interval)/1000, interval_GPU/1000);
+
+   printf("\tAverage Power: %.2f W;  Max Power: %.2f W;  Sampling Duration: %.2f s;  Samples number: %d\n", p_average/1000.0, power_peak/1000.0, (interval)/1000000, n_values);
    
    return 0;
 }
 
-//Initializations ==> enable the NVML library, starts CPU thread for the power monitoring. It is synchronized with the start time of the program
 int GPowerU_init(string out_dir, string node_name) {	
+   struct timeval start_time;
+
    gettimeofday(&start_time,NULL);
    glb_out_dir = out_dir;
    glb_node_name = node_name;
+   nvmlReturn_t nvResult;
 
    if ( mkdir(glb_out_dir.c_str(), 0777) < 0 && errno != EEXIST){
       printf("Unable to create the output directory named: %s", glb_out_dir);
@@ -146,11 +159,9 @@ int GPowerU_init(string out_dir, string node_name) {
    fclose(fp_starttime);
     
    terminate_thread = 0;
-   // NVML INITIALIZATIONS
    nvResult = nvmlInit();
    if (NVML_SUCCESS != nvResult){
         printf("Failed to initialize NVML: %s\n", nvmlErrorString(nvResult));
-
         printf("Press ENTER to continue...\n");
         getchar();
         return -1;
@@ -161,7 +172,7 @@ int GPowerU_init(string out_dir, string node_name) {
         return -1;
    }
    printf("Found %d device%s\n\n", device_count, device_count != 1 ? "s" : "");
-   if (deviceID >= device_count) {
+   if (device_count > MAX_DEVICES) {
         printf("Device_id is out of range.\n");
         return -1;
    }
@@ -173,7 +184,6 @@ int GPowerU_init(string out_dir, string node_name) {
        return -1;
      }
    }
-   //LAUNCH POWER SAMPLER
    int a = pthread_create(&thread_sampler, NULL, threadWork, &start_time);
    if(a) {
      fprintf(stderr,"Error - pthread_create() return code: %d\n",a);
@@ -184,9 +194,7 @@ int GPowerU_init(string out_dir, string node_name) {
 }
 
 
-//Ends power monitoring, returns data output files
-int GPowerU_end(int zz=0) {
-   sleep(zz);
+int GPowerU_end() {
    terminate_thread = 1;
    pthread_join(thread_sampler, NULL);
    DataOutput();
