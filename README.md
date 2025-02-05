@@ -1,32 +1,41 @@
-# gPower (Istituto per le Applicazioni del Calcolo "Mauro Picone")
-__________________________________
+# Monitoring the power consumption of NVIDIA GPUs with `powerMonitor`
 
-GPowerU is a simple tool able to measure the power consumption of a CUDA kernel in specific points of the device code and to generate the complete power profile. 
-To do so, we used the NVIDIA Management Library (NVML): a C-based programmatic interface for monitoring and managing various states within NVIDIA GPU devices. 
+`powerMonitor` is based on [GPowerU](https://github.com/crrossi/GPowerU), and it is meant to monitor the power consumption of NVIDIA GPUs and thus in turn of CUDA applications. We nailed it to our needs, but it is general enough to be adapted to any CUDA application. Moreover you can integrate it inside your application if you like, you need just to use the functions defined in `include/gPower.h` and implemented in `src/gPower.cu`, `powerMonitor` can be see as an example of usage of these functions.
 
-For power measuring in specific kernel points, since the NVML APIs can be called only by the host side, the idea behind the tool is to send a «message» to the CPU from the GPU in order to take the power value at specific locations of the CUDA kernel in during theexecution.
+## Building
+
+```
+make all
+```
+This creates the executable `powerMonitor` in the `bin` directory.
+
+## Usage
+
+`powerMonitor` takes a single argument, the name of the direcotry that will be used to store the output files.
+
+```
+Usage: ./bin/powerMonitor --output-dir <DIR_NAME> 
+
+	-o, --output-dir <DIR>              Write power profile data files to <DIR_NAME>.
+	                                    If <DIR_NAME> does not exist the program creates it
+```
+
+## Run
+
+```
+./bin/powerMonitor -o test_run
+```
+
+`powerMonitor` stops when it catch a SIGINT. When a SIGINT is sent to the tool it stops sampling and writes the output files, then it exits.
+
+# Customization
+
+`powerMonitor` offers a working solution to monitor all GPUs of a node, it runs independently of the applications you want to monitor. `powerMonitor` creates an output file for each device found on the node, each file is named using the following syntax `nvmlPowerProfile_DEVICENUMBER_HOSTNAME.csv`. The maximum number of monitored devices per node is 8, but you can change it by editing `src/gPower.cu` (MAX_DEVICES).
+
+It is also possible to integrate the power monitoring in your code, so you do not need to run `powerMonitor`. You can use the functions defined in `include/gPower.h` and implemented in `src/gPower.cu`, `powerMonitor` can be see as an example of usage of these functions.
 
 
-# Compile on the node
-If the node on which the tool is tested has more then one GPU, it will be possible to set the variable MULTIGPU_DISABLED=0 on GPowerU.h. In this way, the power profiling tool and the test application will be compiled in order to manage a multiGPU execution.
-Instead, in case of a single GPU node, it will be possible to set the variable MULTIGPU_DISABLED=1 on GPowerU.h
-
-** ADD example [MULTIGPU_DISABLED=1]
-
-In the example, the power profile of the device kernel __global__ void add(...) is obtained through the GPowerU_init() and GPowerU_end() functions, which both manage an additional CPU thread from which NVML APIs are called simultaneosly to the kernel execution.
-Instead, the function GPowerU_checkpoints() can be called after kernel<<<...>>>() has launched and works on the same CPU thread of the main, exploting device asynchronus execution. This function has the task to call NVML APIs in correspondence of the take_GPU_time() functions' calls, which send a «message» to the CPU from the GPU in order to take the power value at specific instant.
 
 
-** TRIAD_CU example (from LIKWID powermeter samples) [MULTIGPU_DISABLED=0]
 
-In order to test the tool on a multi-GPU application, it is possible to use an executable from the likwid samples to launch multiple instances of the same simple CUDA kernel on all the GPUs of the node. In this way, through the GPowerU_init() and GPowerU_end() functions, we can profile the power consumption on all the GPUs of the node
-
-
-Application's output consists in .csv files with power profile data (nvml_power_profile.csv) and, in case MULTIGPU_DISABLED=1, checkpoints power samples (power_checkpoints.csv), which are combined in the same graph.pdf through ROOT functions. (N.B.: in case ROOT is not installed on your machine, please set to 0 ROOT_ENABLED preprocessor variable).  
-
-
-# Execution
-Build: make
-
-Exec: ./powmeas
 
